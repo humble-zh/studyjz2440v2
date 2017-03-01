@@ -31,3 +31,11 @@
 # Debug files
 *.dSYM/
 *.su
+
+# Mine
+*.ko.cmd
+*.mod.o.cmd
+*.o.cmd
+*.mod
+*.symvers
+*.mod.c
