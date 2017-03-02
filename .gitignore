@@ -39,3 +39,4 @@
 *.mod
 *.symvers
 *.mod.c
+*.bak
