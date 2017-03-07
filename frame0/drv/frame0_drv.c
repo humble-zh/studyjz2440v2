@@ -2,6 +2,7 @@
 	使用leds，熟悉字符设备驱动开发流程
 		定义读写结构体(函数接口)
 	驱动入口：
+		a.io映射
 		1.注册结构体
 		2.创建类
 		3.在类下创建设备文件(包括主和次设备文件)
@@ -9,6 +10,7 @@
 		1.注销结构体
 		2.注销类下的设备文件
 		3.销毁类
+		a.取消io映射
 	(入口初始化了什么，出口就恢复什么，注意顺序)
 ******************************************************************************/
 #include <linux/module.h>
@@ -22,21 +24,20 @@
 #include <asm/arch/regs-gpio.h>
 #include <asm/hardware.h>
 
-#define DEVICE_NAME     "leds"	/* 加载模式后，执行”cat /proc/devices”命令看到的设备名称 */
-#define CLASS_NAME		"leds_c"
-//#define LED_MAJOR       231	/* 手动分配主设备号，注意register_chrdev的调用 */
-#define LED_MAJOR       0		/* major写0，自动分配设备号 */
+//#define LED_MAJOR		231			/* 手动分配主设备号，注意register_chrdev的调用 */
+#define LED_MAJOR		0			/* major写0，自动分配设备号 */
+#define DEVICE_NAME		"leds"		/* 加载模式后，执行”cat /proc/devices”命令看到的设备名称 */
+#define CLASS_NAME		"leds_c"	/* 在/sys/ 下创建的类名 */
 
+int major = LED_MAJOR;
 static struct class *leds_class;
 static struct class_device *leds_class_devs[4];
 
 static unsigned long gpio_va;
-
 #define GPIO_OFT(x) ((x) - 0x56000000)
 #define GPFCON  (*(volatile unsigned long *)(gpio_va + GPIO_OFT(0x56000050)))
 #define GPFDAT  (*(volatile unsigned long *)(gpio_va + GPIO_OFT(0x56000054)))
 
-int major = LED_MAJOR;
 static int leds_open(struct inode *inode,struct file *file)
 {
 	//获取次设备号
@@ -109,7 +110,6 @@ static struct file_operations leds_fops = {
 	.write = leds_write,
 };
 
-//int major;
 int leds_init(void)
 {
 	int minor = 0;
@@ -121,7 +121,7 @@ int leds_init(void)
 	}
 	
 	//1.注册结构体(函数接口)
-	//把结构体leds_fops注册到数组chardev[]里面的第major项里面。如果register_chrdev第一个参数非0，创建成功就返回0，此时不应该把返回值赋给major
+	//把结构体(fops)注册到数组chardev[]里面的第major项里面。如果register_chrdev第一个参数非0，创建成功就返回0，此时不应该把返回值赋给major
 	major = register_chrdev(major,DEVICE_NAME,&leds_fops);
 	printk("major:%u\n", major);
 	if (major < 0) {
@@ -129,7 +129,7 @@ int leds_init(void)
 		return major;
     }
 	
-	//2.在/sys目录下创建类：leds_c
+	//2.在/sys目录下创建类：
 	leds_class = class_create(THIS_MODULE, CLASS_NAME);
 	if (IS_ERR(leds_class)){
 		return PTR_ERR(leds_class);
@@ -137,7 +137,7 @@ int leds_init(void)
 	printk("Creat class '%s' succeed!\n", CLASS_NAME);
 	
 	//3.在类下创建设备文件(设备节点)
-	//在leds_c这个类下面创建leds设备，然后mdev就会创建/dev/leds设备结点
+	//在这个类下面创建leds设备，然后mdev就会创建/dev/leds设备结点
 	leds_class_devs[0] = class_device_create(leds_class,NULL,MKDEV(major,0),NULL,"leds");
 	for(minor=1;minor<4;minor++)
 	{
@@ -173,7 +173,7 @@ void leds_exit(void)
 }
 
 
-//module_init:定义一个结构体，结构体内部有一个函数指针指向leds_init函数的指针。当我们加载或安装一个驱动的时候，内核会找到结构体，用函数指针调用leds_init函数，这个函数就把leds_fops结构告诉内核
+//module_init(x):定义一个结构体，结构体内部有一个函数指针指向函数x。当我们加载或安装一个驱动的时候，内核会找到结构体，用函数指针调用x函数，这个函数就把定义好的一个结构体(fops)告诉内核
 module_init(leds_init);//指定执行insmod命令时调用的函数
 module_exit(leds_exit);//指定执行rmmod命令时调用的函数
 
