@@ -1,0 +1,677 @@
+1.安装并且配置minicom（minicom_usage）
+```bash
+sudo apt-get install minicom
+ls /dev/ttyUSB*
+sudo minicom -s
+#  Serial port setup
+#  A:/dev/ttyUSB*
+#  B:/var/lock
+#  C:
+#  D:
+#  E:115200 8N1
+#  F:No
+#  G:No
+#  Save setup as dfl
+#  Exit from Minicom
+sudo minicom
+```
+
+2.创建文件夹embedded，并把CD1的所有复制进去。
+```bash
+sudo mkdir /embedded
+sudo chown lzh:lzh /embedded
+#复制CD1进去
+```
+3.看linux/tools/dnw使用说明，刷bin
+
+4.给ubuntu安装NFS服务。
+
+5.把tools/gcc-3.4.5-glibc-2.3.6解压，并且把bin目录添加到环境变量PATH。
+    编译uboot或者内核。
+
+MMU
+
+
+第9课第1节 u-boot分析之编译体验
+```bash
+tar xjf u-boot...
+cd u-boot...
+patch -p1 < ../u-boot...patch
+make 100ask24x0_config
+make
+```
+
+```sh
+#board
+print  #打印环境变量
+set bootdelay 10
+save
+```
+
+uboot功能
+1. 硬件相关初始化：管看门狗，初始化时钟，初始化SDRAM，初始化串口
+2. 从Flash读出内核放到SDRAM  启动内核
+3. 附加：烧写内核到Flash（内核来源途径：网卡，usb，串口）
+
+第9课第2节 u-boot分析之Makefile结构分析
+
+分析代码，先看Makefile
+
+```sh
+make 100ask24x0_config
+  MKCONFIG	:= $(SRCTREE)/mkconfig					//ls mkconfig
+  @$(MKCONFIG) $(@:_config=) arm arm920t 100ask24x0 NULL s3c24x0
+  mkconfig 100ask24x0 arm arm920t 100ask24x0 NULL s3c24x0  		//打开mkconfig文件分析
+  BOARD_NAME="$1"  							//BOARD_NAME=arm
+  ln -s asm-$2 asm							//ln -s asm-arm asm    :ls -l asm    (include/$)
+  rm -f asm-$2/arch							//rm -f asm-arm/arch
+  ln -s ${LNPREFIX}arch-$6 asm-$2/arch				//ln -s arch-$6 asm-arm/arch  :ls asm-arm/arch -l    (${LNPREFIX}未定义，所以为空)
+  ln -s ${LNPREFIX}proc-armv asm-$2/proc				//ln -s proc-armv asm-arm/proc    :ls -l asm-arm/proc
+  echo "ARCH   = $2" >  config.mk					// >表示新建，>>表示追加  config.mk内容为：ARCH=ARM
+  echo "CPU    = $3" >> config.mk					//				         CPU=ARM920t
+  echo "BOARD  = $4" >> config.mk					//					 BPARD=100ask24x0
+  [ "$6" ] && [ "$6" != "NULL" ] && echo "SOC    = $6" >> config.mk //					 SOC=s3c24x0
+  > config.h							//新建文件 config.h,内容为
+  echo "/* Automatically generated - do not edit */" >>config.h	///* Automatically generated - do not edit */
+  echo "#include <configs/$1.h>" >>config.h				//#include <configs/100ask24x0.h>
+
+make
+  OBJS  = cpu/$(CPU)/start.o					//OBJS  = cpu/ARM920t/start.o
+  LIBS  = lib_generic/libgeneric.a
+  LIBS += board/$(BOARDDIR)/lib$(BOARD).a				//LIBS += board/100ask24x0/lib100ask24x0.a
+  LIBS += cpu/$(CPU)/lib$(CPU).a					//LIBS += cpu/ARM920t/lib$ARM920t.a
+  all:		$(ALL)						//make
+  $(obj)u-boot:		depend version $(SUBDIRS) $(OBJS) $(LIBS) $(LDSCRIPT)
+    UNDEF_SYM=`$(OBJDUMP) -x $(LIBS) |sed  -n -e 's/.*\(__u_boot_cmd_.*\)/-u\1/p'|sort|uniq`;\
+    cd $(LNDIR) && $(LD) $(LDFLAGS) $$UNDEF_SYM $(__OBJS) \
+        --start-group $(__LIBS) --end-group $(PLATFORM_LIBS) \
+        -Map u-boot.map -o u-boot
+
+  UNDEF_SYM=`arm-linux-objdump -x lib_generic/libgeneric.a board/100ask24x0/lib100ask24x0.a cpu/arm920t/libarm920t.a cpu/arm920t/s3c24x0/libs3c24x0.a lib_arm/libarm.a fs/cramfs/libcramfs.a fs/fat/libfat.a fs/fdos/libfdos.a fs/jffs2/libjffs2.a fs/reiserfs/libreiserfs.a fs/ext2/libext2fs.a net/libnet.a disk/libdisk.a rtc/librtc.a dtt/libdtt.a drivers/libdrivers.a drivers/nand/libnand.a drivers/nand_legacy/libnand_legacy.a drivers/usb/libusb.a drivers/sk98lin/libsk98lin.a common/libcommon.a |sed  -n -e 's/.*\(__u_boot_cmd_.*\)/-u\1/p'|sort|uniq`;\
+    cd /work/CD1/system/u-boot-1.1.6 && arm-linux-ld -Bstatic -T /work/CD1/system/u-boot-1.1.6/board/100ask24x0/u-boot.lds -Ttext 0x33F80000  $UNDEF_SYM cpu/arm920t/start.o \
+        --start-group lib_generic/libgeneric.a board/100ask24x0/lib100ask24x0.a cpu/arm920t/libarm920t.a cpu/arm920t/s3c24x0/libs3c24x0.a lib_arm/libarm.a fs/cramfs/libcramfs.a fs/fat/libfat.a fs/fdos/libfdos.a fs/jffs2/libjffs2.a fs/reiserfs/libreiserfs.a fs/ext2/libext2fs.a net/libnet.a disk/libdisk.a rtc/librtc.a dtt/libdtt.a drivers/libdrivers.a drivers/nand/libnand.a drivers/nand_legacy/libnand_legacy.a drivers/usb/libusb.a drivers/sk98lin/libsk98lin.a common/libcommon.a --end-group -L /work/tools/gcc-3.4.5-glibc-2.3.6/lib/gcc/arm-linux/3.4.5 -lgcc \
+        -Map u-boot.map -o u-boot
+```
+
+      分析u-boot.lds
+      第一个文件：CPU/arm920t/Start.S
+      链接地址:board/100ask24x0/u-boot.lds  和  0x33f80000  //grep "33F80000" * -nR
+
+第9课第3节 u-boot分析之源码第1阶段
+    硬件相关初始化：管看门狗，初始化时钟，初始化SDRAM
+    设置堆栈SP
+    (C函数)从NandFlash读出内核放到SDRAM  启动内核
+    先分析CPU/arm920t/Start.S（硬件相关初始化）
+    第一阶段
+    1设置为svc32模式
+    2关看门狗
+    3屏蔽中断
+    4初始化SDRAM
+    5设置栈
+    6时钟
+    7代码重定位（Flash==>SDRAM）
+    8清bss段
+    9调用Start_armboot（C函数）进入第二阶段
+    第二阶段（烧写Flash，网卡，USB，串口， 启动内核）
+
+第9课第3节 u-boot分析之源码第2阶段
+    u-boot启动内核：
+		1从flash读出内核：能支持flash（读写），环境变量：1保存在flash上，2代码默认值
+			start_armboot
+				=>flash_init
+				=>nand_init
+				=>main_loop  #死循环
+					=>getenv("bootdelay")
+					=>s=getenv("bootcmd")  #s则为启动内核命令
+					倒计时bootdelay没按空格
+						=>printf("Booting Linux ...\n")				#nand read.jffs2 0x30007fc0 kernel
+						=>run_command(s,0)	#运行命令s 启动内核    	#bootm 0x3000 7fc0
+					按空格
+						run_command("menu",0)
+						按下q
+							len=readline(CFG_PROMPT)				#读入串口数据
+							rc=run_command(lastcommand,flag)		#uboot的核心就是run_command这些命令
+
+		2启动内核。
+第9课第4节 u-boot分析之u-boot命令实现
+    1.串口输入字符串（命令）
+	2.命令=动作=>函数
+	命令结构体：name,fun。
+	字符串匹配结构体的name，调用相应的fun。
+    run_command
+		=>处理命令，比如';'表示隔开的两个命令。print;md.w 0
+		=>处理宏
+		=>parse_line #解析，提取参数，例如：md.w 0  == argv[0]=md.w argv[1]=0
+		=>find_cmd #寻找匹配命令(name) = argv[0]     cmd_tbl_s命令结构退
+			从__u_boot_cmd_start到__u_boot_cmd_end逐个匹配。#来源连接脚本u-boot.lds
+			strncmp
+			如果匹配成功，则返回该命令结构体，如果失败则指向下一名命令结构体
+			例子：bootm 0x30007fc0    U_BOOT_CMD{...}结构体
+			...结构体宏展开...
+    一、增加一个hello命令：打印hello word
+	common/cmd_hello.c
+	include<所有头文件>
+	int do_hello (cmd_tbl_t *cmdtp,int flag,int argc,char *argv[])
+	{
+		int i;
+		printf("hello world.,%d\n",argc);
+		for(i=0;i<argc；i++)
+		{
+			printf("argv[%d]:%s\n",i,argv[i]);
+		}
+		return 0;
+	}
+	U_BOOT_CMD{hello,CFG_MAXARGS,1,do_hello,"hello -just for test\n","hello ,long help .......\n"};
+    二、修改common/Makefile
+    COBJS  =....cmd_mac.o cmd_hello.o
+	即可make编译，烧写。
+
+第9课第5节 u-boot分析_uboot启动内核
+    接第9课第3节，u-boot启动内核：
+	2启动内核。
+		倒计时bootdelay没按空格
+			=>printf("Booting Linux ...\n")
+			=>run_command(s,0)   #s就是nand read.jffs2 0x30007fc0 kernel bootm 0x3000 7fc0
+			#nand read.jffs2 0x30007fc0 kernel    从nand的kernel分区读出内核(2m),放到0x30007fc0
+			#nand read.jffs2 0x30007fc0 0x0006000 0x00200000
+			#nand没有分区表，源码（100ask24x0.h:MTDPARTS_DEFAULT）把nand分为：boot;env;kernel;root.
+				=>do_nand
+					read.jffs2
+					=>nand_read_opts
+			#运行命令s 启动内核		bootm 0x30007fc0
+				=>do_bootm
+					1.读取头部，根据头部移动真正内核到合适地方
+					2.do_bootm_linux  启动内核
+						uboot告诉内核一些启动参数（设置启动参数）,在某个地址(0x30000100)按某种格式(TAG)保存数据。
+							=>setup_start_tag (bd);
+							=>setup_memory_tags (bd);
+							=>setup_commandline_tag (bd,commandline);
+							=>setup_end_tag (bd);
+							从0x30000100开始：
+							setup_start_tag{size=5，tag=0x54410001,flag=0,pagesize=0,rootdev=0}
+							setup_memory_tags{size=4,tag=0x54410002，size，start=0x3000000}
+							setup_commandline_tag{size=?,tag=0x54410009,bootargs字符串}
+							setup_end_tag{size=0,,tag=0}
+							内核启动时，会来0x30000100地址读取上面参数
+						跳到入口地址（启动内核）{theKernel=(void(*)(int,int,uint))ntohl(hdr->ih_ep);theKernel (0,bd->bi_arch_number,bd->bi_boot_params);}
+						gd->bd->bi_arch_number=MACH_TYPE_S3C2440  机器ID，用于判断内核是否支持该单板。
+
+			#uboot:Flash上面存的内核是uImage里面是：头部+真正的内核。
+			#头部image_header   我们关心两个，ih_load：加载地址，内核运行时所放置的位置；ih_ep:入口地址，运行内核时，直接跳到这个地址前面的(0x30007fc0)
+			#bootm 地址(uImage)   读出头部，看ih_load加载地址，如果真正的内核不在该地址，则把它复制到该地址。
+			#头部64字节：0x30008000-0x30007fc0=0x40(64字节)
+
+第10课第1节 内核启动流程分析之编译体验
+    cd /work/CD1/system/
+    tar xjf linux-2.6.22.6.tar.bz2
+    cd linux-...
+    patch -p1 < ../linux-2.6.22.6_jz2440.patch
+    配置方法：1、make menuconfig  2、使用默认配置，在上面修改  3、使用厂家提供的配置文件
+    2、使用默认配置，在上面修改：ls arch/arm/configs/    （配置目录找到与板子相似的配置文件：s3c2410_defconfig）
+       make s3c2410_defconfig			#结果会保存在.config
+       make menuconfig					#读取.config
+    3、厂家提供config
+       cp config_ok .config
+    编译：make       //想要生成uImage就执行：make uimage
+======================问题======================
+Makefile:1449: *** mixed implicit and normal rules: deprecated syntax
+/embedded/system/linux-2.6.22.6/Makefile:416: *** mixed implicit and normal rules: deprecated syntax
+/embedded/system/linux-2.6.22.6/Makefile:1449: *** mixed implicit and normal rules: deprecated syntax
+make[1]: *** No rule to make target 'silentoldconfig'。 停止。
+  CHK     include/linux/version.h
+  UPD     include/linux/version.h
+make: *** No rule to make target 'include/config/auto.conf', needed by 'include/asm-arm/.arch'。 停止。
+
+方法：
+是由于我的系统的make工具太新，make的旧版规则已经无法兼容新版。按照以下方式，问题得到解决：
+修改前：416行 config %config: scripts_basic outputmakefile FORCE
+修改后：416行 %config: scripts_basic outputmakefile FORCE
+
+修改前：1449行 / %/: prepare scripts FORCE
+修改后：1449行 %/: prepare scripts FORCE
+
+问题解决
+================================================
+
+	uboot烧写。k  对应命令：usbslave 1 0x30000000;nand erase kernel;nand wirte.jffs2 0x30000000 kernel $(filesize)
+
+第10课第2节 内核启动流程分析之配置
+    配置结果：生成 .config     //cat .config
+    例子：DM9000   :grep "CONFIG_DM9000" * -nwR
+           1)C源码有DM9000的宏  CONFIG_DM9000就在4)autoconf.h里面定义
+           2)子目录drivers/net/Makefile
+           3)include/config/auto.conf
+           4)include/linux/autoconf.h  #make的时候，会自动根据.config生成的文件
+         cat include/linux/autoconf.h  //DM9000 宏定义为1(相当于y)
+         vi drivers/net/Makefile   （子目录下的Makefile）
+             //#obj-$(CONFIG_DM9000) += dm9000.o      obj-yxxx+=xxx.o (y集成)
+             //#obj-$(CONFIG_DM9000) += dm9ks.o       obj-mxxx+=xxx.o (m模块)
+				$(CONFIG_DM9000)定义来源于3)auto.conf，所以auto.conf一般用来被包含
+         vi include/config/auto.conf
+         make uImage时候， .config会创建生成autoconf.h（供源代码使用）和auto.conf（供顶子目录Makefile使用）
+    分析Makefile：第一个文件，连接脚本
+
+第10课第3节 内核启动流程分析之Makefile
+	linux-2.6.22.6_jz2440\Documentation\kbuild\makefile.txt
+	顶层Makefile,.config,arch/$(ARCH)/Makefile,scripts/Makefile.*,kbuild\Makefiles
+	子目录下的Makefile：drivers/char/Makefile规则：obj-y += xxx.o 集成          obj-m += xxx.o  模块
+	a.c		b.c
+	obj-m += ab.o
+	ab-objs := a.o b.o			a.c=>a.o	b.c=>b.o	a.o,b.o=>ab.o
+	架构相关的Makefile：arch/arm/Makefile
+	当执行make或者make uImage时候，从顶层Makefile开始分析
+		arch/arm/Makefile被包含进顶层Makefile
+		uImage:vmlinux  #vmlinux是真正的内核
+		vmlinux:$(vmlinux-lds) $(vmlinux-init) $(vmlinux-main) $(kallsyms.o) FORCE
+		vmilnux-init:=$(head-y) $(init-y)
+			head-y:=arch/arm/kernel/head$(MMUEXT).o arch/arm/kernel/init.task.o
+			init-y:=$(patsubst %/, %/built-in.o, $(init-y))   # %/代表init-y:=init/;patsubst函数；init/目录下所有文件编译成一个init/built-in.o
+		vmlinux-main:=$(core-y) $(libs-y) $(drivers-y) $(net-y)
+			core-y:=usr/
+			core-y+=kernel/ mm/ fs/ ipc/ security/ crypto/ block/
+			core-y:=$(patsubst %/,%/built-in.o,$(core-y))
+			最终core-y=usr/built-in.o kernel/built-in.o mm/built-in.o fs/built-in.o ipc/built-in.o security/built-in.o crypto/built-in.o block/built-in.o
+			libs-y=lib/lib.a lib/built-in.o
+			drivers-y=drivers/built-in.obj sound/built-in.o
+			net-y=net/built-in.o
+		vmlinux-all:=$(vmlinux-init) $(vmlinux-main)
+		vmlinux-lds:=arch/$(ARCH)/kernel/vmlinux.lds
+		make的时候执行arm-linux-ld -EL -p --no-undefined -X -o vmlinux -T arch/arm/kernel/vmlinux/lds 再接上上面的.o源材料
+
+第10课第4节 内核启动流程分析之内核启动
+    内核启动 1处理uboot传入的参数(第9课第5节 u-boot分析_uboot启动内核) 2挂接根文件系统 3最终启动应用程序(保存在根文件系统)
+      arch/arm/kernel/head.S       //自解压代码+压缩内核  =  内核
+        0)判断是否支持cpu
+        1）uboot启动内核传入参数（机器ID，启动参数），内核启动读取寄存器(r1=362)，获得机器ID，判断是否支
+		   持该单板（lookup_machine_type: r3=3b的实际地址，r4=.(3b的虚拟地址),r5=__arch_info_begin,r6=__arch_info_end）内核所支持的单板信息，全部保存在
+		   __arch_info_begin到__arch_info_end之中，逐个取出与uboot传入的id进行比较，如果匹配则继续启动。
+        2）建立页表(因为内核的连接地址不是物理地址)
+        3）使能MMU
+        4）跳转到Start_Kernel  (第一个C函数，处理uboot传入的启动参数)
+	内核引导阶段：
+	  arch/arm/kernel/head.S
+	  arch/arm/kernel/head-common.S
+	  arch/arm/mm/proc-arm920.S
+		__lookup_processor_type	确定内核是否支持该架构
+		__lookup_machine_type	确定内核是否支持该单板
+		__create_page_tables	建立一级页表
+		__arm920_setup			设置arm920 CPU核，禁止I,D caches等
+		__enable_mmu			时能MMU
+		__mmap_switched			复制数据段，清楚BSS段，设置栈指针，保存CPU ID到processor_id变量，保存机器类型ID到__machine_arch_type变量，调用start_kernel
+	  init/main.c的start_kernel函数
+		printk(linux_banner)	输出Linux版本信息
+		setup_arch				设置与体系结构相关的环境
+		......					......
+		console_init			初始化控制台
+		......					......
+		rest_init				启动init过程
+
+	Start_Kernel  //init/main.c
+        =>setup_arch          //解析uboot传
+        =>setup_command_line  //入的启动信息
+		=>parse_early_param
+			=>do_early_param
+				从__setup_start到__setup_end，调用early函数
+		=>unknown_bootoption
+			=>obsolete_checksetup
+				从__setup_start到__setup_end，调用非early函数
+        =>rest_init
+			=>kernel_init
+				=>prepare_namespace
+					=>mount_root //挂接根文件系统
+				=>init_post
+					打开console然后执行应用程序
+
+	root=/dev/mtdblock3	内核没有分区表，所以分区表要在代码里面写死
+
+第11课第1节 构建根文件系统之启动第1个程序
+	uboot启动内核，内核启动根文件系统下的应用程序，构建根文件系统
+	接上节课Start_Kernel  //init/main.c
+		=>prepare_namespace
+			=>mount_root	//挂接根文件系统
+		=>init_post			//打开console然后执行应用程序。
+			内核怎样启动第一个应用程序：
+			1 open(/dev/console)	sys_dup(0),sysd_dup(0)//复制一个console
+			// printf(),scanf(),err()的标准输入，输出，标准错误有3个文件
+			// /dev/console是标准输入输出终端，键盘和显示器
+			2 run_init_process(命令行指定init)	//如果uboot中bootargvs的init有定义，则执行改init的指令
+			如果命令行不存在init，则顺序往下
+			run_init_process("/sbin/init")
+			run_init_process("/etc/init")
+			run_init_process("/bin/init")
+			run_init_process("/bin/sh")
+第11课第2节 构建根文件系统之init进程分析
+    busybox:ls cp cd ....命令的组合 ls = busybox ls
+    init程序：1读取配置文件 2解析配置文件 3执行（用户程序，例如监控程序等等）
+		busybox
+			=>init_main
+				=>parse_inittab
+					=>fopen(INITTAB,"r")
+						//打开配置文件/etc/inittab。配置文件包括：指定程序，指定执行程序时间。
+						//inittab格式：<id>:<runlevels>:<action>:<process>
+						//id=/dev/id id加上/dev前缀用做终端：stdin,stdout,stderr:printf,scanf,err
+						//runlevels:忽略
+						//action:指定执行时机
+						//process:应用程序或脚本
+					如果打不开配置文件，则使用默认配置项
+					=>new_init_action
+					如果打开了，进行解析，例如：#号表示注释，忽略掉。
+					=>new_init_action
+						//new_init_action(ASKFIRST,bb_default_login_shell,VC_2)  其中bb_default_login_shell是"-/bin/sh"  VC_2是"/dev/tty2"
+						//static void new_init_action(int action,const char *command,const char *cons)
+						//该函数1、创建一个init_action结构，填充上面3个参数；2、把该结构体放入init_action_list链表
+						...从默认new_init_action反推配置...
+					run_actions(SYSINIT)
+						=>waitfor(a,0)	//执行应用程序，等待它执行完毕
+							run(a)		//创建process子进程
+							waitpid(runpid,&status,0)	//等待它结束
+						=>delete_init_action(a)	//在init_action_list链表里面删除
+					run_actions(WAIT)
+						=>waitfor(a,0)	//执行应用程序，等待它执行完毕
+							run(a)		//创建process子进程
+							waitpid(runpid,&status,0)	//等待它结束
+						=>delete_init_action(a)	//在init_action_list链表里面删除
+					run_actions(ONCE)
+						run(a)	//创建process子进程
+						delete_init_action(a)	//在init_action_list链表里面删除
+					while(1){
+						run_actions(RESPAWN)
+							if（a-pid==0){a-pid=run(a);}
+						run_actions(ASKFIRST)
+							if（a-pid==0){a-pid=run(a);打印Please press Enter to activate this console.;等待你输入回车；创建进程}
+						wpid=wait(NULL)	//等待子进程退出
+						while(wpid>0){
+							a->pid=0	//退出后，设置pid=0
+						}
+					}
+
+	最小根文件系统需要：/dev/console;/dev/null;/etc/inittab;配置文件里指定的应用程序;库;init本身,即busybox
+	启动最小根文件系统：/dev/console;/dev/null;init即busybox;读取配置文件里指定的应用程序;C库
+
+第11课第3节 构建根文件系统之busybox
+	编译busybox
+		tar xjf busybox..
+		cd busybox..
+		cat INSTALL
+		make menuconfig
+		参考嵌入式linux开发完全手册
+		make
+		mkdir -p /work/nfs_root/first_filesys
+		make CONFIG_PREFIX=/work/nfs_root/first_filesys install
+		cd /work/nfs_root/first_filesys
+		ls -al
+
+第11课第4节 构建根文件系统之构建根文件系统
+	ls /dev/console /dev/null -l   #观察服务器这两文件的情况
+	cd /work/nfs_root/first_filesys
+	mkdir dev && cd dev
+	sudo mknod console c 5 1  #c表示字符设备，5表示主设备号，1表示副设备号
+	sudo mknod null c 1 3
+	cd /work/nfs_root/first_filesys
+	mkdir etc
+	vi etc/inittab
+		console::askfirst:-/bin/sh
+	创建C库，参考开发手册
+	补上mkdir proc
+		vi etc/inittab
+			::sysinit:/etc/init.d/rcS	#追加到末尾
+		mkdir etc/init.d
+		vi etc/init.d/rcS
+			mount -t proc none /proc	#或者用mount -a，此方法依赖于一个配置文件etc/fstab，该文件格式参考开发手册
+										# #device mount-point type options dump fsck order
+										# #proc    /proc      proc defaults 0   0
+		chmod +x etc/init.d/rcS
+	补完
+	最小根文件系统构建完之后，需要制作映像文件才能烧写到开发板。
+	制作yaffs2映像文件
+	cd /work/system
+	tar xjf yaffs_source...
+	cd Developmen...
+	cd yaffs2/utils
+	make
+	sudo cp makyaffs2image /usr/local/bin/
+	sudo chmod +x /usr/local/bin/makyaffs2image
+	cd /work/nfs_root/first_filesys
+	makyaffs2image		#查看使用方法
+	makyaffs2image first_filesys first_filesys.yaffs2
+	烧写,开发板命令
+	mkdir proc		#proc是内核提供的一个虚拟文件系统
+	mount -t proc none /proc
+	ps
+	cd /proc/1/ && ls -l fd
+	补:cat /proc/mounts
+	udev机制学习，mdev是其简化版本，参考busybox-1.7.0\docs\mdev.txt
+		自动创建/dev/设备节点
+	mkdir sys
+	vi /etc/fstab
+		sysfs	/sys	sysfs	defaults	0	0
+		tmpfs	/dev	tmpfs	defaults	0	0
+	vi /etc/init.d/rcS
+		mkdir /dev/pts
+		mount -t devpts devpts /dev/pts
+		echo /sbin/mdev > /proc/sys/kernel/hotplug	#热拔插
+		mdev -s										#系统原先的设备节点创建出来
+	makyaffs2image first_filesys first_filesys.yaffs2 #烧写
+	...制作jffs2演示...
+    挂接NFS：1 服务器某个文件允许被挂接
+                配置文件：/etc/exports
+                cd first_fs
+                sudo vi /etc/exports
+                  添加：/work/CD1/nfs_root/fs_mini *(rw,sync,no_root_squash)
+                sudo service rpcbind restart
+				sudo service portmap start
+                sudo /etc/init.d/nfs-kernel-server restart
+                挂接自己测试：sudo mount -t nfs 192.168.1.2:/embedded/nfs_root/fs_mini /mnt     //所有first_fs改为fs_mini
+             单板主动挂接
+                mkdir /mnt
+                ifconfig eth0 192.168.2.x
+                mount -t nfs -o nolock 192.168.1.2:/embedded/nfs_root/fs_mini_mdev /mnt
+            2 直接从nfs启动，参考kernel_projects\linux-2.6.22.6_jz2440\Documentation\nfsroot.txt
+				noinitrd root=/dev/nfs nfsroot=[<server-ip>:]<root-dir>[,<nfs-options>] ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:<device>:<autoconf> init=/linuxrc console=ttySAC0
+               修改uboot命令行参数 //原本的是  set bootargs noinitrd root=/dev/mtdblock3 init=/linuxrc console=ttySAC0
+               set bootargs noinitrd root=/dev/nfs nfsroot=192.168.1.2:/jz2440v2/fs_qtopia ip=192.168.1.17:192.168.1.2:192.168.1.255:255.255.255.0::eth0:off init=/linuxrc console=ttySAC0              //修改fs_mini_mdev/etc/init.d/rcS的ifconfig行
+               save
+               boot
+=============问题=============
+解压之后的目录缺少节点，需要mknod生成节点，设备才能正常启动。
+给所有的fs_*.tar.bz2解压的时候，需要用sudo才能正常解压里面的mknod节点
+sudo tar -xvf fs_mini.tar.bz2
+==============================
+
+第12课第1节 字符设备驱动程序之概念介绍
+	应用程序涉及很多操作：读写文件，点灯，获取按键。它不需要看芯片手册了解硬件，而是直接使用open,read,write函数即可操控硬件。
+    应用[（open,read,write）、C库]
+	进入到内核
+		swi val（val=0,1,2对应open,read,write）引发异常，跳到内核异常处理函数
+		内核的system call interface,根据发生异常的原因(val)调用不同【VFS(virtual filesystem)】处理函数sys_open…write
+		sys_open会根据打开不同的文件（根据文件属性等），找到对应驱动程序，然后调用驱动程序的xxx_open。
+	操作硬件
+
+第12课第2.1节 字符设备驱动程序之LED驱动程序_编写编译
+    app:open,read,write——驱动框架——驱动：led_open,led_read,led_write
+    驱动框架：1）写出led_open…write函数
+              2）怎么告诉内核，原因：让内核知道有这个驱动程序（定义一个file_operations结构体——通过register_chrdev(major,"first_drv",&first_drv_fops)注册到内核，即告诉内核——驱动入口函数first_drv_init()，即谁来调用——module_init(first_drv_init)宏定义修饰一个结构体，里面的指针指向结构体） //register_chrdev(主设备号，名字，结构体)把结构体放到vfs的chardev数组的major项里面   当app里面open(文件)，就查看文件：设备类型或属性（字符类型）、主设备号、次设备号   通过主设备号索引到内存vfs文件系统里面（字符类型）数组chardev的第major项的结构体
+              3）卸载驱动程序
+                  void first_drv_exit(void) 用宏定义修饰module_exit(first_drv_exit)
+    编译与测试：cd /work/CD1/mydrivers/first_drv  修改Makefile的 KERN_DIR = /work/CD1/system/linux-2.6.22.6  以及 obj-m	+= 12_2_1_first_drv.o
+               make
+
+第12课第2.2节 字符设备驱动程序之LED驱动程序_测试改进
+    把first_drv.ko放到板子上，先cat /proc/devices  然后加载：insmod xxx.ko,再cat /proc/devices  //看到主设备有111
+    写测试程序xxxtest
+    arm-linux-gcc -o xxxtest xxxtest.c  //xxx放到开发板
+    ./xxxtest  //打不开，因为不存在该设备
+    mknod /dev/xxx c 111 0  //创建设备节点
+    ./xxxtest
+    主设备号可以自己找空缺项来填充，写0可以自动分配。
+        重新编译，major为0的情况,复制xxx.ko文件到板子
+        lsmod
+	rmmod xxx
+	cat /proc/devices
+	insmod xxx.ko
+	cat /proc/devices
+	./xxxtest   //打不开，因为/dev/xxx文件主设备号不是111
+	rm /dev/xxx
+	mknod /dev/xxx c 252 0
+	./xxxtest
+    app:open("/dev/xxx"...)
+        1.手工建立mknod dev/xxx c major 0
+        2.自动创建udev，即mdev 根据系统信息创建设备结点
+			cd /sys
+			ls
+			cd devices
+			ls	//当注册一个驱动程序的时候，会在/sys目录下面生成设备信息。mdev就会根据这些系统信息创建设备结点。
+	make  //新的驱动，复制到nfs目录下
+开发板	lsmod
+	rmmod xxx.ko
+	insmod ./xxx.ko
+	cd /sys/class/firstdrv/
+	ls
+	cat xyz/dev //mdev会根据这个信息创建设备节点。因为/etc/init.d/rcs的echo /sbin/mdev > /proc/sys/kernel/hotplug (热拔插)，所以当系统有设备加载/卸载，都会执行mdev，然后自动创建或删除结点
+	cd /
+	rm xxx.ko
+	rmmod xxx
+	ls /dev/xyz  //驱动卸载之后，自动被删除了。
+===================
+insmod xxx.ko	//调用驱动的init函数（入口函数）
+mknod /dev/xxx c 111 0	//创建设备节点，如果不想手动执行这一步命令，可以在驱动的init函数里面创建设备节点
+./xxxtest	//应用程序的open函数打开xxx设备节点文件，内核根据该设备节点文件的主设备号，找到字符设备数组的第111项（驱动接口），然后调用该项里面的drv_open函数
+
+[insmod xxx.ko:
+	register_chrdev:把驱动函数接口注册进入内核，并分配主设备号major
+	class_create:在/sys/class下创建一个类
+	class_device_create:在/sys/class/对应类 下创建一个设备目录，该目录下有相关信息，例如：目录下的dev就保存着主副设备号。MDEV就是用这些信息帮我们创建/dev/设备文件的
+]
+===================
+
+第12课第2.3节 字符设备驱动程序之LED驱动程序_操作LED
+    1框架 2完善硬件操作：a看原理图，b看2440手册，c写代码（ioremap映射虚拟地址）
+    配置GPFCON——open()    GPFDAT——write()
+    ioremap()映射函数查看leds_drv.c以及leds_drvtest.c	//iounmap()
+    通过命令控制某盏灯：leds_drvper.c leds_drvpertest.c
+
+第12课第3节 字符设备驱动程序之查询方式的按键驱动程序
+
+第12课第4.1节 字符设备驱动程序之中断方式的按键驱动_Linux异常处理结构
+	前面的单板实验，中断方式获取按键值。
+		1.按键按下
+		2.cpu发生中断，跳到异常向量入口处执行
+		3.入口处跳转指令：b 函数
+			a.保存被中断的现场
+			b.执行处理中断处理函数
+			c.恢复被中断的现场
+	Linux内核如何处理中断
+		1.异常向量（参考开发手册，ARM架构的CPU异常向量基址可以是0x00000000,也可以是0xffff0000(虚拟地址),linux内核使用后者）
+		  当建立物理地址与虚拟地址映射后，通过trap_init()函数，把异常向量（那些跳转指令）复制到0xffff0000去。
+		  trap_init  函数构造异常向量，把异常向量（__vectors_start地址的内容是一堆跳转指令(arch\arm\kernel\entry-armv.S)）复制到0xffff0000去
+			=>memcpy((void *)vectors,__vectors_start,__vectors_end - __vectors_start)
+			//vectors是0xffff0000,__vectors_start地址的内容是一堆跳转指令(arch\arm\kernel\entry-armv.S)
+			例如1：发生未定义指令，b vector_und+stubs_offset //vector_und是一个宏，展开如下
+			/*	vector_und:
+					stmia sp,{r0,lr}		保存返回地址等等
+					mrs lr,spsr
+					str lr,{sp,#8}
+
+					mrs r0,cpsr				进入管理模式
+					eor r0,r0,#(\mode ^ SVC_MODE)
+					msr spsr_cxsf,r0
+
+					and lr,lr,0x0f			下一级跳转(跳到紧跟随后的表)，跳转表arch\arm\kernel\entry-armv.S的__vectors_start
+					mov r0,spldr lr,{pc,lr,lsl #2}
+					movs pc,lr
+					.endm
+			*/
+			例如2：b vector_irq + stubs_offset	//vector_irq是一个宏，展开如下
+			/*	vector_irq:
+					sub lr,lr,#4	计算返回地址
+					...				保存返回地址等等
+					...				转换到管理模式
+					...				继续跳转，跳转表arch\arm\kernel\entry-armv.S的vector_stub irq,IRQ_MODE,4
+						假设跳到__irq_usr:
+									usr_entry	宏，保存寄存器
+									irq_handler	宏，最终调用asm_do_IRQ函数，即我们的处理函数。
+			*/
+
+第12课第4.2节 字符设备驱动程序之中断方式的按键驱动_Linux中断处理结构(不太明白)
+	单板中断处理：1分辨是哪个中断 2调用处理函数 3处理完清中断
+	在内核中中断处理框架
+	do_asm_IRQ
+		根据中断号irq作为下标取出数组irq_desc[]项
+		desc_handle_irq	进入处理
+			=>desc->handle_irq	//desc是irq_desc[irq]的一个全局数组项。分辨中断，调用处理函数，清中断就是在该数组实现
+				//irq_desc[16]={handle_irq=handle_edge_irq;chip=sec_irq_eint0t4}
+				//EINT4~23:irq_desc[]={handle_irq=handle_edge_irq;chip=s3c_irqext_chip}
+				//数组的构建是在s3c24xx_init_irq函数内实现的
+			假设irq是16，则调用的是
+			=>handle_edge_irq	//处理边沿触发的中断
+				=>desc->chip->ack(irq)	//请中断
+				=>handle_IRQ_event	//真正的处理过程
+					取出action链表中的成员，执行action->handler
+
+	按下按键——1进入异常模式（b vector_irq）——2__irq_usr——3 b asm_do_irq——4 irq-desc[irq]->handle_irq——5 handle_edge_irq{desc->chip->ack();handle_IRQ_event();}
+	irq_desc结构分析：
+	...
+	request_irq(irq,handler,irqflags,devname,dev_id)	//注册中断服务程序，free_irq函数卸载中断服务程序。free_irq(irq,dev_id)
+	{
+		1.分配irqaction结构
+		2.setup_irq(irq,action)
+			a.irq_desc[irq]->action链表加入传进来的action结构体参数
+			b.desc->chip->settype()
+			c.desc_>chip->stratup或者enable
+	}
+	request_irq函数:分配一个irq_action，把这个结构放入irq_desc[irq]的action链表，设置引脚，时能中断。
+	free_irq函数：出链，禁止中断
+
+第12课第4.3节
+    代码：third_drv 分析
+    cat /proc/interrupts
+    exec 5</dev/buttons		//打开/dev/buttons设备，定位到5去。ls -l /proc/771/fd  （771是当前sh进程）
+    exec 5<&-			//关闭 lsmod看有多少人用，exec关闭之后再rmmod
+    ls -l /proc/771/fd
+    cat /proc/interrupts
+
+第12课第5节 字符设备驱动程序之poll机制
+	poll机制分析.doc
+	代码：fourth_drv 分析
+	应用程序：open等函数对应sys_open再对应驱动的drv_open;这里添加一个poll对应drv_poll
+	poll
+		[kernel]=>sys_poll
+				=>do_sys_poll(xxx,xxx,&timeout_jiffies)
+					=>poll_initwait(&table);
+						=>init_poll_funcptr(&pwq->pt, __pollwait);
+							=>table->qproc = __pollwait;	//table的gproc成员指向__pollwait函数
+					=>do_poll(nfds,head,&table,timeout)
+						for(;;)
+						{
+							for(;pfd!=pfd_end;pfd++)	//查询多个文件
+							{
+								if(do_pollfd(pfd,pt)
+										=>mask=file->f_op-poll(file,pwait);return mask; //驱动程序结构体f_op
+											//驱动的poll函数
+											=>__pollwait(filp,&button_waitq,p);//把当前进程挂到button_waitq队列里面
+											=>p->qproc(filp,wait_adress,p);
+								   )//如果驱动函数poll返回非0值，那么count++
+								{count++;pt=NULL;}
+							}
+							//break的条件：count非0，超时，有信号在等待处理
+							if(count || !*timeout || signal_pending(current)){break;}
+							//休眠__timeout
+							__timeout=schedule_timeout(__timeout);
+						}
+
+	应用程序的poll用法，在服务器man poll可以查询到。
+
+第12课第6节 字符设备驱动程序之异步通知
+	应用程序主动读取按键方式：
+	1.查询（耗资源）
+	2.中断（read函数，程序休眠一直等待，永远不返回）
+	3.poll（指定超时时间返回）
+
+	按键按下，驱动程序触发应用程序执行。即：异步通知，使用signal信号实现。
+	1.应用程序：注册信号处理函数，告诉驱动自己的PID
+	2.谁发信号：驱动
+	3.信号发给谁：app
+	4.怎么发信号：kill_fasyn
+
+	应用程序调用fasync就会调用fifth_drv_fasync对结构体进行初始化
+	应用程序用fcntl(fd,F_SECTION,pid)告诉驱动程序自己的PID
